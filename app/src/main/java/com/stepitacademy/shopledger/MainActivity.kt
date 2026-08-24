@@ -4,44 +4,135 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import com.stepitacademy.shopledger.data.RoomShopRepository
+import com.stepitacademy.shopledger.data.ShopDatabase
+import com.stepitacademy.shopledger.ui.customers.AddEditCustomerScreen
+import com.stepitacademy.shopledger.ui.customers.CustomersScreen
+import com.stepitacademy.shopledger.ui.customers.CustomersViewModel
 import com.stepitacademy.shopledger.ui.theme.ShopLedgerTheme
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        val applicationScope = CoroutineScope(SupervisorJob())
+        val database = ShopDatabase.getDatabase(this, applicationScope)
+        val repository = RoomShopRepository(database.shopDao())
+
+        val factory = object : ViewModelProvider.Factory {
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                if (modelClass.isAssignableFrom(CustomersViewModel::class.java)) {
+                    @Suppress("UNCHECKED_CAST")
+                    return CustomersViewModel(repository) as T
+                }
+                throw IllegalArgumentException("Unknown ViewModel class")
+            }
+        }
+
         setContent {
             ShopLedgerTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                }
+                AppNavigation(
+                    customersViewModel = viewModel(factory = factory)
+                )
             }
         }
     }
 }
 
 @Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
+fun AppNavigation(
+    customersViewModel: CustomersViewModel
+) {
+    val navController = rememberNavController()
 
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    ShopLedgerTheme {
-        Greeting("Android")
+    NavHost(
+        navController = navController,
+        startDestination = "customers_list"
+    ) {
+        //customers List
+        composable("customers_list") {
+            CustomersScreen(
+                viewModel = customersViewModel,
+                onCustomerClick = { customerId ->
+                    navController.navigate("customer_detail/$customerId")
+                },
+                onAddCustomerClick = {
+                    navController.navigate("add_customer")
+                },
+                onEditCustomerClick = { customer ->
+                    val encodedName = java.net.URLEncoder.encode(customer.name, "UTF-8")
+                    val encodedPhone = java.net.URLEncoder.encode(customer.phone ?: "", "UTF-8")
+                    navController.navigate("edit_customer?customerId=${customer.id}&initialName=$encodedName&initialPhone=$encodedPhone")
+                }
+            )
+        }
+
+        //add new customer
+        composable("add_customer") {
+            AddEditCustomerScreen(
+                isEditing = false,
+                onSave = { name, phone ->
+                    customersViewModel.saveCustomer(
+                        id = null,
+                        name = name,
+                        phone = phone
+                    ) {
+                        navController.popBackStack()
+                    }
+                },
+                onBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        // edit existing customer
+        composable(
+            route = "edit_customer?customerId={customerId}&initialName={initialName}&initialPhone={initialPhone}",
+            arguments = listOf(
+                navArgument("customerId") { type = NavType.LongType; defaultValue = 0L },
+                navArgument("initialName") { type = NavType.StringType; defaultValue = "" },
+                navArgument("initialPhone") { type = NavType.StringType; defaultValue = "" }
+            )
+        ) { backStackEntry ->
+            val customerId = backStackEntry.arguments?.getLong("customerId") ?: 0L
+            val initialName = backStackEntry.arguments?.getString("initialName").orEmpty()
+            val initialPhone = backStackEntry.arguments?.getString("initialPhone").orEmpty()
+
+            AddEditCustomerScreen(
+                initialName = initialName,
+                initialPhone = initialPhone,
+                isEditing = true,
+                onSave = { name, phone ->
+                    customersViewModel.saveCustomer(
+                        id = customerId,
+                        name = name,
+                        phone = phone
+                    ) {
+                        navController.popBackStack()
+                    }
+                },
+                onBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        //customer detail add nv nis b
+        composable("customer_detail/{customerId}") { backStackEntry ->
+            val customerId = backStackEntry.arguments?.getString("customerId")?.toLongOrNull() ?: 0L
+        }
     }
 }
