@@ -5,6 +5,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -15,6 +18,10 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.stepitacademy.shopledger.data.RoomShopRepository
 import com.stepitacademy.shopledger.data.ShopDatabase
+import com.stepitacademy.shopledger.data.ShopRepository
+import com.stepitacademy.shopledger.orders.AddEditOrderScreen
+import com.stepitacademy.shopledger.orders.CustomerDetailScreen
+import com.stepitacademy.shopledger.orders.CustomerDetailViewModel
 import com.stepitacademy.shopledger.ui.customers.AddEditCustomerScreen
 import com.stepitacademy.shopledger.ui.customers.CustomersScreen
 import com.stepitacademy.shopledger.ui.customers.CustomersViewModel
@@ -44,7 +51,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             ShopLedgerTheme {
                 AppNavigation(
-                    customersViewModel = viewModel(factory = factory)
+                    customersViewModel = viewModel(factory = factory),
+                    repository=repository
+
                 )
             }
         }
@@ -53,7 +62,8 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun AppNavigation(
-    customersViewModel: CustomersViewModel
+    customersViewModel: CustomersViewModel,
+    repository: ShopRepository
 ) {
     val navController = rememberNavController()
 
@@ -130,9 +140,46 @@ fun AppNavigation(
             )
         }
 
-        //customer detail add nv nis b
-        composable("customer_detail/{customerId}") { backStackEntry ->
-            val customerId = backStackEntry.arguments?.getString("customerId")?.toLongOrNull() ?: 0L
+        // Customer Detail Screen
+        composable(
+            route = "customer_detail/{customerId}",
+            arguments = listOf(navArgument("customerId") { type = NavType.LongType })
+        ) { backStackEntry ->
+            val customerId = backStackEntry.arguments?.getLong("customerId") ?: 0L
+            // Use constructor parameters directly matching your ViewModel
+            val detailViewModel = remember { CustomerDetailViewModel(customerId, repository) }
+
+            CustomerDetailScreen(
+                viewModel = detailViewModel,
+                onAddOrderClick = {
+                    navController.navigate("add_order/$customerId")
+                },
+                onBackClick = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        // Add Order Screen
+        composable(
+            route = "add_order/{customerId}",
+            arguments = listOf(navArgument("customerId") { type = NavType.LongType })
+        ) { backStackEntry ->
+            val customerId = backStackEntry.arguments?.getLong("customerId") ?: 0L
+            val detailViewModel = remember { CustomerDetailViewModel(customerId, repository) }
+            val customerDebt by detailViewModel.customerDebt.collectAsState()
+
+            AddEditOrderScreen(
+                customerName = customerDebt?.name ?: "",
+                onSave = { description, amount, currency, timestamp, isPaid ->
+                    detailViewModel.addOrder(description, amount, currency, timestamp, isPaid) {
+                        navController.popBackStack()
+                    }
+                },
+                onBack = {
+                    navController.popBackStack()
+                }
+            )
         }
     }
 }
