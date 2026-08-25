@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,6 +25,7 @@ import java.util.*
 fun CustomerDetailScreen(
     viewModel: CustomerDetailViewModel,
     onAddOrderClick: () -> Unit,
+    onEditOrderClick: (Order) -> Unit,
     onBackClick: () -> Unit
 ) {
     val customer by viewModel.customerDebt.collectAsState()
@@ -68,17 +70,14 @@ fun CustomerDetailScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text(formatMoney(c.owedKhr, "KHR"),
-                                style = MaterialTheme.typography.titleLarge)
-                            Text(formatMoney(c.owedUsd, "USD"),
-                                style = MaterialTheme.typography.titleLarge)
+                            Text(formatMoney(c.owedKhr, "KHR"), style = MaterialTheme.typography.titleLarge)
+                            Text(formatMoney(c.owedUsd, "USD"), style = MaterialTheme.typography.titleLarge)
                         }
 
                         if (!c.phone.isNullOrBlank()) {
                             Spacer(modifier = Modifier.height(12.dp))
                             Button(onClick = {
-                                val intent = Intent(Intent.ACTION_DIAL,
-                                    Uri.parse("tel:${c.phone}"))
+                                val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${c.phone}"))
                                 context.startActivity(intent)
                             }) {
                                 Text("Call: ${c.phone}")
@@ -97,19 +96,29 @@ fun CustomerDetailScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(orders, key = { it.id }) { order ->
-                    OrderRow(order = order, onMarkPaid = { viewModel.markOrderPaid(order.id) })
+                    OrderRow(
+                        order = order,
+                        onMarkPaid = { viewModel.markOrderPaid(order.id) },
+                        onEditClick = { onEditOrderClick(order) }
+                    )
                 }
             }
         }
     }
 }
+
 @Composable
-fun OrderRow(order: Order, onMarkPaid: () -> Unit) {
-    // Formatter to convert timestamp to readable date (e.g., 25/08/2026)
+fun OrderRow(
+    order: Order,
+    onMarkPaid: () -> Unit,
+    onEditClick: () -> Unit
+) {
     val dateFormatter = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()) }
     val dateString = remember(order.timestamp) { dateFormatter.format(Date(order.timestamp)) }
 
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth()
+    ) {
         Row(
             modifier = Modifier
                 .padding(16.dp)
@@ -117,12 +126,11 @@ fun OrderRow(order: Order, onMarkPaid: () -> Unit) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Left side: Order details and date
             Column(modifier = Modifier.weight(1f)) {
-                // Description
                 Text(order.description, style = MaterialTheme.typography.titleMedium)
                 Spacer(modifier = Modifier.height(2.dp))
 
-                // Date display added here
                 Text(
                     text = "Date: $dateString",
                     style = MaterialTheme.typography.bodySmall,
@@ -131,16 +139,32 @@ fun OrderRow(order: Order, onMarkPaid: () -> Unit) {
 
                 Spacer(modifier = Modifier.height(4.dp))
 
-                // Amount and Paid status
                 Text(
-                    text = "${formatMoney(order.amount, order.currency.name)} - ${if (order.isPaid)
-                        "Paid" else "Unpaid"}",
+                    text = "${formatMoney(order.amount, order.currency.name)} - ${if (order.isPaid) "Paid" else "Unpaid"}",
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
-            if (!order.isPaid) {
-                Button(onClick = onMarkPaid) {
-                    Text("Mark Paid")
+
+            // Right side: Mark Paid button (if unpaid) and Edit icon aligned cleanly
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                if (!order.isPaid) {
+                    Button(
+                        onClick = onMarkPaid,
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text("Mark Paid")
+                    }
+                }
+
+                IconButton(onClick = onEditClick) {
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = "Edit Order",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
         }

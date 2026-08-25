@@ -16,20 +16,30 @@ class CustomerDetailViewModel(
     private val repository: ShopRepository
 ) : ViewModel() {
 
+    // Customer debt details stream
     val customerDebt: StateFlow<CustomerWithDebt?> = repository.customerDebt(customerId)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed
-            (5000), null)
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = null
+        )
 
+    // Orders list stream for this customer
     val orders: StateFlow<List<Order>> = repository.ordersForCustomer(customerId)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed
-            (5000), emptyList())
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
 
+    // Mark an order as paid
     fun markOrderPaid(orderId: Long) {
         viewModelScope.launch {
             repository.markOrderPaid(orderId)
         }
     }
 
+    // Add a new order
     fun addOrder(
         description: String,
         amount: Long,
@@ -47,6 +57,31 @@ class CustomerDetailViewModel(
                 timestamp = timestamp,
                 isPaid = isPaid
             )
+            onSuccess()
+        }
+    }
+
+    // Update an existing order (Edit)
+    fun updateOrder(
+        orderId: Long,
+        description: String,
+        amount: Long,
+        currency: Currency,
+        timestamp: Long,
+        isPaid: Boolean,
+        onSuccess: () -> Unit
+    ) {
+        viewModelScope.launch {
+            val updatedOrder = Order(
+                id = orderId,
+                customerId = customerId,
+                description = description,
+                amount = amount,
+                currency = currency,
+                timestamp = timestamp,
+                isPaid = isPaid
+            )
+            repository.updateOrder(updatedOrder)
             onSuccess()
         }
     }

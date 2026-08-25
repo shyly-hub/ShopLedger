@@ -140,13 +140,12 @@ fun AppNavigation(
             )
         }
 
-        // Customer Detail Screen
+        // Customer Detail Screen 3
         composable(
             route = "customer_detail/{customerId}",
             arguments = listOf(navArgument("customerId") { type = NavType.LongType })
         ) { backStackEntry ->
             val customerId = backStackEntry.arguments?.getLong("customerId") ?: 0L
-            // Use constructor parameters directly matching your ViewModel
             val detailViewModel = remember { CustomerDetailViewModel(customerId, repository) }
 
             CustomerDetailScreen(
@@ -154,13 +153,16 @@ fun AppNavigation(
                 onAddOrderClick = {
                     navController.navigate("add_order/$customerId")
                 },
+                onEditOrderClick = { order ->
+                    navController.navigate("edit_order/${order.id}?customerId=$customerId")
+                },
                 onBackClick = {
                     navController.popBackStack()
                 }
             )
         }
 
-        // Add Order Screen
+        //  Add Order Screen Route
         composable(
             route = "add_order/{customerId}",
             arguments = listOf(navArgument("customerId") { type = NavType.LongType })
@@ -171,8 +173,49 @@ fun AppNavigation(
 
             AddEditOrderScreen(
                 customerName = customerDebt?.name ?: "",
+                orderToEdit = null,
                 onSave = { description, amount, currency, timestamp, isPaid ->
                     detailViewModel.addOrder(description, amount, currency, timestamp, isPaid) {
+                        navController.popBackStack()
+                    }
+                },
+                onBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        // Edit Order Screen Route
+        composable(
+            route = "edit_order/{orderId}?customerId={customerId}",
+            arguments = listOf(
+                navArgument("orderId") { type = NavType.LongType },
+                navArgument("customerId") { type = NavType.LongType; defaultValue = 0L }
+            )
+        ) { backStackEntry ->
+            val orderId = backStackEntry.arguments?.getLong("orderId") ?: 0L
+            val customerId = backStackEntry.arguments?.getLong("customerId") ?: 0L
+
+            val detailViewModel = remember { CustomerDetailViewModel(customerId, repository) }
+            val orders by detailViewModel.orders.collectAsState()
+            val customerDebt by detailViewModel.customerDebt.collectAsState()
+
+            val orderToEdit = remember(orders, orderId) {
+                orders.find { it.id == orderId }
+            }
+
+            AddEditOrderScreen(
+                customerName = customerDebt?.name ?: "",
+                orderToEdit = orderToEdit,
+                onSave = { description, amount, currency, timestamp, isPaid ->
+                    detailViewModel.updateOrder(
+                        orderId = orderId,
+                        description = description,
+                        amount = amount,
+                        currency = currency,
+                        timestamp = timestamp,
+                        isPaid = isPaid
+                    ) {
                         navController.popBackStack()
                     }
                 },
