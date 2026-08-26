@@ -28,6 +28,8 @@ import com.stepitacademy.shopledger.ui.customers.CustomersViewModel
 import com.stepitacademy.shopledger.ui.theme.ShopLedgerTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import java.net.URLDecoder
+import java.net.URLEncoder
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -52,8 +54,7 @@ class MainActivity : ComponentActivity() {
             ShopLedgerTheme {
                 AppNavigation(
                     customersViewModel = viewModel(factory = factory),
-                    repository=repository
-
+                    repository = repository
                 )
             }
         }
@@ -71,7 +72,7 @@ fun AppNavigation(
         navController = navController,
         startDestination = "customers_list"
     ) {
-        //customers List
+        // Customers List
         composable("customers_list") {
             CustomersScreen(
                 viewModel = customersViewModel,
@@ -82,14 +83,14 @@ fun AppNavigation(
                     navController.navigate("add_customer")
                 },
                 onEditCustomerClick = { customer ->
-                    val encodedName = java.net.URLEncoder.encode(customer.name, "UTF-8")
-                    val encodedPhone = java.net.URLEncoder.encode(customer.phone ?: "", "UTF-8")
+                    val encodedName = URLEncoder.encode(customer.name, "UTF-8")
+                    val encodedPhone = URLEncoder.encode(customer.phone ?: "", "UTF-8")
                     navController.navigate("edit_customer?customerId=${customer.id}&initialName=$encodedName&initialPhone=$encodedPhone")
                 }
             )
         }
 
-        //add new customer
+        // Add New Customer
         composable("add_customer") {
             AddEditCustomerScreen(
                 isEditing = false,
@@ -108,7 +109,7 @@ fun AppNavigation(
             )
         }
 
-        // edit existing customer
+        // Edit Existing Customer
         composable(
             route = "edit_customer?customerId={customerId}&initialName={initialName}&initialPhone={initialPhone}",
             arguments = listOf(
@@ -118,8 +119,12 @@ fun AppNavigation(
             )
         ) { backStackEntry ->
             val customerId = backStackEntry.arguments?.getLong("customerId") ?: 0L
-            val initialName = backStackEntry.arguments?.getString("initialName").orEmpty()
-            val initialPhone = backStackEntry.arguments?.getString("initialPhone").orEmpty()
+            val rawName = backStackEntry.arguments?.getString("initialName").orEmpty()
+            val rawPhone = backStackEntry.arguments?.getString("initialPhone").orEmpty()
+
+            // Decode '+' back to spaces
+            val initialName = URLDecoder.decode(rawName, "UTF-8")
+            val initialPhone = URLDecoder.decode(rawPhone, "UTF-8")
 
             AddEditCustomerScreen(
                 initialName = initialName,
@@ -162,7 +167,7 @@ fun AppNavigation(
             )
         }
 
-        //  Add Order Screen Route
+        // Add Order Screen Route
         composable(
             route = "add_order/{customerId}",
             arguments = listOf(navArgument("customerId") { type = NavType.LongType })
