@@ -80,7 +80,7 @@ fun CustomersScreen(
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Premium Total Owed Banner
+
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -137,7 +137,7 @@ fun CustomersScreen(
                 }
             }
 
-            // Modern Search Bar
+
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = viewModel::onSearchQueryChange,
@@ -246,7 +246,6 @@ fun CustomerRow(
                 modifier = Modifier.weight(1f),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Customer Avatar Icon
                 Box(
                     modifier = Modifier
                         .size(44.dp)

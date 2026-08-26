@@ -61,7 +61,7 @@ fun AddEditCustomerScreen(
                 .padding(horizontal = 20.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Customer Name Input
+            // input customer name
             OutlinedTextField(
                 value = name,
                 onValueChange = {
@@ -102,7 +102,7 @@ fun AddEditCustomerScreen(
                 )
             )
 
-            // Phone Number Input
+            // input tusab number
             OutlinedTextField(
                 value = phone,
                 onValueChange = { phone = it },
@@ -134,7 +134,7 @@ fun AddEditCustomerScreen(
 
             Spacer(modifier = Modifier.weight(1f))
 
-            // Save/Update Action Button
+            //action but
             Button(
                 onClick = {
                     if (name.isBlank()) {
