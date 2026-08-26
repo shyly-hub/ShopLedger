@@ -2,6 +2,7 @@ package com.stepitacademy.shopledger.data
 
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 
 // ---------------------------------------------------------------------------
@@ -69,7 +70,7 @@ data class ShopTotal(
     val totalUsd: Long
 )
 
-/** Thrown (or wrapped) when a delete is blocked by the RESTRICT foreign key. */
+/** Thrown (or wrapped) when a delete is blocked because the customer still owes money. */
 class CustomerHasDebtException(val customerId: Long) : Exception(
     "Customer $customerId still has unpaid orders and cannot be deleted."
 )
@@ -87,8 +88,9 @@ interface ShopDao {
     @Update
     suspend fun updateCustomer(customer: Customer)
 
-    // Throws SQLiteConstraintException when the FK RESTRICT fires.
-    // The repository below turns that into a Result the UI can handle cleanly.
+    // Only safe to call once the customer's orders are gone / all paid off.
+    // Left in place for direct use / testing; the repository is what
+    // orchestrates the debt check + cleanup below.
     @Delete
     suspend fun deleteCustomer(customer: Customer)
 
@@ -100,6 +102,21 @@ interface ShopDao {
 
     @Query("UPDATE orders SET isPaid = 1 WHERE id = :orderId")
     suspend fun markOrderPaid(orderId: Long)
+
+    // Deletes a customer's order history. Only ever called once we've
+    // confirmed the customer has no outstanding debt — this clears their
+    // paid orders so the RESTRICT foreign key doesn't block the delete.
+    @Query("DELETE FROM orders WHERE customerId = :customerId")
+    suspend fun deleteOrdersForCustomer(customerId: Long)
+
+    // Debt-aware delete: wipes the (paid) order history for this customer,
+    // then deletes the customer, atomically. Caller MUST have already
+    // verified debt == 0 — this does not re-check.
+    @Transaction
+    suspend fun deleteCustomerAndOrders(customer: Customer) {
+        deleteOrdersForCustomer(customer.id)
+        deleteCustomer(customer)
+    }
 
     @Query("""
         SELECT c.id AS id, c.name AS name, c.phone AS phone,
@@ -211,13 +228,32 @@ class RoomShopRepository(private val dao: ShopDao) : ShopRepository {
 
     override suspend fun updateCustomer(customer: Customer) = dao.updateCustomer(customer)
 
-    override suspend fun deleteCustomer(customer: Customer): Result<Unit> =
-        try {
-            dao.deleteCustomer(customer)
+    /**
+     * A customer can be deleted only once they owe nothing.
+     *
+     * The `RESTRICT` foreign key on orders.customerId blocks deletion as long
+     * as ANY order row references the customer — paid or not. So checking
+     * only "does debt == 0" isn't enough on its own; we also have to clear
+     * out the (now irrelevant) paid order history in the same transaction,
+     * or the delete still throws SQLiteConstraintException even with zero debt.
+     */
+    override suspend fun deleteCustomer(customer: Customer): Result<Unit> {
+        val debt = dao.getCustomerDebt(customer.id).first()
+        val stillOwes = debt != null && (debt.owedKhr > 0 || debt.owedUsd > 0)
+
+        if (stillOwes) {
+            return Result.failure(CustomerHasDebtException(customer.id))
+        }
+
+        return try {
+            dao.deleteCustomerAndOrders(customer)
             Result.success(Unit)
         } catch (_: android.database.sqlite.SQLiteConstraintException) {
+            // Defensive fallback — shouldn't normally hit this once debt == 0,
+            // but never surface a raw DB exception to the UI.
             Result.failure(CustomerHasDebtException(customer.id))
         }
+    }
 
     override suspend fun addOrder(customerId: Long, description: String, amount: Long, currency: Currency, timestamp: Long, isPaid: Boolean): Long =
         dao.insertOrder(Order(customerId = customerId, description = description, amount = amount, currency = currency, timestamp = timestamp, isPaid = isPaid))

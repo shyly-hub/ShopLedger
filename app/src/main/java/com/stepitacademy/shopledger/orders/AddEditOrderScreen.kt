@@ -9,6 +9,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
@@ -26,9 +27,12 @@ fun AddEditOrderScreen(
     onSave: (description: String, amount: Long, currency: Currency, timestamp: Long, isPaid: Boolean) -> Unit,
     onBack: () -> Unit
 ) {
-    var description by remember(orderToEdit) { mutableStateOf(orderToEdit?.description ?: "") }
+    // FIX: rememberSaveable so in-progress input survives rotation,
+    // matching the checklist's "survive a rotation" requirement and the
+    // same pattern already used in AddEditCustomerScreen.
+    var description by rememberSaveable(orderToEdit) { mutableStateOf(orderToEdit?.description ?: "") }
 
-    var amountText by remember(orderToEdit) {
+    var amountText by rememberSaveable(orderToEdit) {
         mutableStateOf(
             if (orderToEdit != null) {
                 if (orderToEdit.currency == Currency.USD) (orderToEdit.amount / 100.0).toString()
@@ -37,20 +41,30 @@ fun AddEditOrderScreen(
         )
     }
 
-    var selectedCurrency by remember(orderToEdit) { mutableStateOf(orderToEdit?.currency ?: Currency.KHR) }
-    var isPaid by remember(orderToEdit) { mutableStateOf(orderToEdit?.isPaid ?: false) }
-    var selectedTimestamp by remember(orderToEdit) { mutableStateOf(orderToEdit?.timestamp ?: System.currentTimeMillis()) }
+    var selectedCurrency by rememberSaveable(orderToEdit) { mutableStateOf(orderToEdit?.currency ?: Currency.KHR) }
+    var isPaid by rememberSaveable(orderToEdit) { mutableStateOf(orderToEdit?.isPaid ?: false) }
+    var selectedTimestamp by rememberSaveable(orderToEdit) { mutableStateOf(orderToEdit?.timestamp ?: System.currentTimeMillis()) }
+
+    // FIX: surface validation errors instead of silently doing nothing on Save.
+    var descriptionError by remember { mutableStateOf<String?>(null) }
+    var amountError by remember { mutableStateOf<String?>(null) }
 
     val context = LocalContext.current
     val dateFormatter = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()) }
 
-    val calendar = Calendar.getInstance().apply { timeInMillis = selectedTimestamp }
-    val datePickerDialog = remember {
+    // FIX: rebuild the dialog (and the calendar it's seeded from) whenever
+    // selectedTimestamp changes, so reopening the picker shows the last
+    // picked date instead of the date the screen first composed with.
+    val datePickerDialog = remember(selectedTimestamp) {
+        val calendar = Calendar.getInstance().apply { timeInMillis = selectedTimestamp }
         DatePickerDialog(
             context,
             { _, year, month, dayOfMonth ->
-                calendar.set(year, month, dayOfMonth)
-                selectedTimestamp = calendar.timeInMillis
+                val picked = Calendar.getInstance().apply {
+                    timeInMillis = selectedTimestamp
+                    set(year, month, dayOfMonth)
+                }
+                selectedTimestamp = picked.timeInMillis
             },
             calendar.get(Calendar.YEAR),
             calendar.get(Calendar.MONTH),
@@ -89,20 +103,35 @@ fun AddEditOrderScreen(
         ) {
             OutlinedTextField(
                 value = description,
-                onValueChange = { description = it },
+                onValueChange = {
+                    description = it
+                    if (it.isNotBlank()) descriptionError = null
+                },
                 label = { Text("Description *") },
+                isError = descriptionError != null,
+                supportingText = {
+                    descriptionError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
 
             OutlinedTextField(
                 value = amountText,
-                onValueChange = { amountText = it },
+                onValueChange = {
+                    amountText = it
+                    amountError = null
+                },
                 label = { Text(if (selectedCurrency == Currency.USD) "Amount ($)" else "Amount (Riel)") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                isError = amountError != null,
+                supportingText = {
+                    amountError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
+
             OutlinedTextField(
                 value = dateFormatter.format(Date(selectedTimestamp)),
                 onValueChange = {},
@@ -164,8 +193,16 @@ fun AddEditOrderScreen(
 
             Button(
                 onClick = {
-                    val parsedDouble = amountText.toDoubleOrNull() ?: 0.0
-                    if (description.isNotBlank() && parsedDouble > 0.0) {
+                    val parsedDouble = amountText.toDoubleOrNull()
+
+                    descriptionError = if (description.isBlank()) "Description is required" else null
+                    amountError = when {
+                        parsedDouble == null -> "Enter a valid amount"
+                        parsedDouble <= 0.0 -> "Amount must be greater than zero"
+                        else -> null
+                    }
+
+                    if (descriptionError == null && amountError == null && parsedDouble != null) {
                         val finalAmount = if (selectedCurrency == Currency.USD) {
                             Math.round(parsedDouble * 100)
                         } else {

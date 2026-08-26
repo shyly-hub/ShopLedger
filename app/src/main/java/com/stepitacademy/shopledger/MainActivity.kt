@@ -61,6 +61,29 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/**
+ * FIX: CustomerDetailViewModel takes a customerId, so it can't use a
+ * no-arg factory. This factory is built fresh per-route with the right
+ * customerId and handed to viewModel(factory = ...), so the ViewModel is
+ * registered with the screen's ViewModelStore and onCleared() actually
+ * fires when you navigate away — which is what stops viewModelScope from
+ * leaking its Flow collectors. Previously this was built with
+ * remember { CustomerDetailViewModel(customerId, repository) }, which
+ * Compose never tells to clean up.
+ */
+private fun customerDetailViewModelFactory(
+    customerId: Long,
+    repository: ShopRepository
+): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        if (modelClass.isAssignableFrom(CustomerDetailViewModel::class.java)) {
+            @Suppress("UNCHECKED_CAST")
+            return CustomerDetailViewModel(customerId, repository) as T
+        }
+        throw IllegalArgumentException("Unknown ViewModel class")
+    }
+}
+
 @Composable
 fun AppNavigation(
     customersViewModel: CustomersViewModel,
@@ -145,13 +168,15 @@ fun AppNavigation(
             )
         }
 
-        // Customer Detail Screen 3
+        // Customer Detail Screen
         composable(
             route = "customer_detail/{customerId}",
             arguments = listOf(navArgument("customerId") { type = NavType.LongType })
         ) { backStackEntry ->
             val customerId = backStackEntry.arguments?.getLong("customerId") ?: 0L
-            val detailViewModel = remember { CustomerDetailViewModel(customerId, repository) }
+            val detailViewModel: CustomerDetailViewModel = viewModel(
+                factory = customerDetailViewModelFactory(customerId, repository)
+            )
 
             CustomerDetailScreen(
                 viewModel = detailViewModel,
@@ -173,7 +198,9 @@ fun AppNavigation(
             arguments = listOf(navArgument("customerId") { type = NavType.LongType })
         ) { backStackEntry ->
             val customerId = backStackEntry.arguments?.getLong("customerId") ?: 0L
-            val detailViewModel = remember { CustomerDetailViewModel(customerId, repository) }
+            val detailViewModel: CustomerDetailViewModel = viewModel(
+                factory = customerDetailViewModelFactory(customerId, repository)
+            )
             val customerDebt by detailViewModel.customerDebt.collectAsState()
 
             AddEditOrderScreen(
@@ -201,7 +228,9 @@ fun AppNavigation(
             val orderId = backStackEntry.arguments?.getLong("orderId") ?: 0L
             val customerId = backStackEntry.arguments?.getLong("customerId") ?: 0L
 
-            val detailViewModel = remember { CustomerDetailViewModel(customerId, repository) }
+            val detailViewModel: CustomerDetailViewModel = viewModel(
+                factory = customerDetailViewModelFactory(customerId, repository)
+            )
             val orders by detailViewModel.orders.collectAsState()
             val customerDebt by detailViewModel.customerDebt.collectAsState()
 
