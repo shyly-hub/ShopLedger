@@ -1,18 +1,18 @@
-package com.stepitacademy.shopledger.ui.customers
+package com.stepitacademy.shopledger.customers
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -20,10 +20,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.stepitacademy.shopledger.data.CustomerWithDebt
+import com.stepitacademy.shopledger.ui.customers.CustomersViewModel
+import com.stepitacademy.shopledger.ui.theme.components.InitialsAvatar
+import com.stepitacademy.shopledger.ui.theme.components.debtParts
 import com.stepitacademy.shopledger.util.formatMoney
+import com.stepitacademy.shopledger.util.toTitleCase
+
+// Standard values used across the refactor so every card/screen matches.
+private val CardCornerRadius = 12.dp
+private val ScreenEdgePadding = 16.dp
+private val CardBorderColor = Color(0xFFE5E7EB)
+private val BalanceColor = Color(0xFFDC2626)
+private val FabBottomMargin = 24.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,16 +61,17 @@ fun CustomersScreen(
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
                     Text(
-                        text = "Shop Ledger",
+                        text = "Customer Ledger",
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                     )
                 },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 )
             )
@@ -66,9 +80,14 @@ fun CustomersScreen(
             ExtendedFloatingActionButton(
                 onClick = onAddCustomerClick,
                 icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                text = { Text("New Customer") },
+                text = { Text("New Customer", fontWeight = FontWeight.SemiBold) },
                 containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                elevation = FloatingActionButtonDefaults.elevation(
+                    defaultElevation = 6.dp,
+                    pressedElevation = 8.dp
+                ),
+                modifier = Modifier.padding(bottom = FabBottomMargin)
             )
         }
     ) { padding ->
@@ -76,17 +95,17 @@ fun CustomersScreen(
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = ScreenEdgePadding)
         ) {
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-
+            // Outstanding total card
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 16.dp),
-                shape = RoundedCornerShape(20.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                shape = RoundedCornerShape(CardCornerRadius),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
                 Box(
                     modifier = Modifier
@@ -102,41 +121,41 @@ fun CustomersScreen(
                 ) {
                     Column {
                         Text(
-                            text = "TOTAL OWED TO SHOP",
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
+                            text = "TOTAL OUTSTANDING",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
+                            ),
+                            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
+                        // Both figures share the same style/weight/baseline so
+                        // KHR and USD read as equally-weighted, aligned values.
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column {
-                                Text(
-                                    text = formatMoney(total.totalKhr, "KHR"),
-                                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.ExtraBold),
-                                    color = MaterialTheme.colorScheme.onPrimary
-                                )
-                            }
-                            Divider(
-                                modifier = Modifier
-                                    .height(30.dp)
-                                    .width(1.dp),
-                                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.3f)
+                            Text(
+                                text = formatMoney(total.totalKhr, "KHR"),
+                                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.ExtraBold),
+                                color = MaterialTheme.colorScheme.onPrimary
                             )
-                            Column {
-                                Text(
-                                    text = formatMoney(total.totalUsd, "USD"),
-                                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.ExtraBold),
-                                    color = MaterialTheme.colorScheme.onPrimary
-                                )
-                            }
+                            Box(
+                                modifier = Modifier
+                                    .height(24.dp)
+                                    .width(1.dp)
+                                    .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.35f))
+                            )
+                            Text(
+                                text = formatMoney(total.totalUsd, "USD"),
+                                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.ExtraBold),
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
                         }
                     }
                 }
             }
-
 
             OutlinedTextField(
                 value = searchQuery,
@@ -153,15 +172,15 @@ fun CustomersScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 16.dp),
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(CardCornerRadius),
                 singleLine = true,
                 colors = OutlinedTextFieldDefaults.colors(
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                    focusedContainerColor = MaterialTheme.colorScheme.surface
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedBorderColor = CardBorderColor
                 )
             )
 
-            //Customerl ist
             if (customers.isEmpty()) {
                 Box(
                     modifier = Modifier
@@ -170,7 +189,9 @@ fun CustomersScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = if (searchQuery.isEmpty()) "No customers found" else "No matching results",
+                        text = if (searchQuery.isEmpty())
+                            "No customers yet — tap \"New Customer\" to add your first one."
+                        else "No matches for \"$searchQuery\".",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.outline
                     )
@@ -178,7 +199,7 @@ fun CustomersScreen(
             } else {
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = PaddingValues(bottom = 80.dp)
+                    contentPadding = PaddingValues(bottom = 96.dp)
                 ) {
                     items(customers, key = { it.id }) { customerWithDebt ->
                         CustomerRow(
@@ -202,42 +223,40 @@ fun CustomerRow(
     onDelete: () -> Unit
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
 
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
             title = { Text("Delete Customer") },
-            text = { Text("Are you sure you want to delete ${item.name}? This action cannot be undone.") },
+            text = { Text("Are you sure you want to delete ${item.name.toTitleCase()}? This action cannot be undone.") },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        showDeleteDialog = false
-                        onDelete()
-                    }
-                ) {
+                TextButton(onClick = { showDeleteDialog = false; onDelete() }) {
                     Text("Delete", color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) {
-                    Text("Cancel")
-                }
+                TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
             }
         )
     }
 
+    val displayName = item.name.toTitleCase()
+    val parts = debtParts(item.owedKhr, item.owedUsd)
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(CardCornerRadius))
             .clickable { onClick() },
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+        shape = RoundedCornerShape(CardCornerRadius),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, CardBorderColor),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(
             modifier = Modifier
-                .padding(16.dp)
+                .padding(14.dp)
                 .fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
@@ -246,58 +265,68 @@ fun CustomerRow(
                 modifier = Modifier.weight(1f),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Person,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
+                InitialsAvatar(name = displayName)
 
                 Spacer(modifier = Modifier.width(12.dp))
 
                 Column {
                     Text(
-                        text = item.name,
+                        text = displayName,
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                     )
-                    item.phone?.let {
-                        if (it.isNotBlank()) {
-                            Text(
-                                text = it,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.outline
-                            )
-                        }
+                    item.phone?.takeIf { it.isNotBlank() }?.let {
+                        Text(
+                            text = "Ph: $it",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
                     }
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Owes: ${formatMoney(item.owedKhr, "KHR")} | ${formatMoney(item.owedUsd, "USD")}",
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                        color = if (item.owedKhr > 0 || item.owedUsd > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                    )
+                    if (parts.isEmpty()) {
+                        AssistChip(
+                            onClick = {},
+                            enabled = false,
+                            label = { Text("No balance", style = MaterialTheme.typography.labelSmall) },
+                            colors = AssistChipDefaults.assistChipColors(
+                                disabledContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                                disabledLabelColor = MaterialTheme.colorScheme.primary
+                            ),
+                            border = null
+                        )
+                    } else {
+                        Text(
+                            text = "Due: " + parts.joinToString("  ·  "),
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = BalanceColor
+                        )
+                    }
                 }
             }
 
-            Row {
-                IconButton(onClick = onEdit) {
+            Box {
+                IconButton(onClick = { showMenu = true }) {
                     Icon(
-                        imageVector = Icons.Default.Edit,
-                        contentDescription = "Edit Customer",
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "More options",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                IconButton(onClick = { showDeleteDialog = true }) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "Delete Customer",
-                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
+                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Edit") },
+                        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                        onClick = { showMenu = false; onEdit() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Default.Delete,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        },
+                        onClick = { showMenu = false; showDeleteDialog = true }
                     )
                 }
             }

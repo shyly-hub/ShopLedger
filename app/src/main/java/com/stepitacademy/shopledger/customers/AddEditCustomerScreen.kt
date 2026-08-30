@@ -1,8 +1,11 @@
-package com.stepitacademy.shopledger.ui.customers
+package com.stepitacademy.shopledger.customers
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
@@ -11,11 +14,16 @@ import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.stepitacademy.shopledger.util.toTitleCase
+
+private val CardCornerRadius = 12.dp
+private val ScreenEdgePadding = 16.dp
+private val CardBorderColor = Color(0xFFE5E7EB)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,6 +40,7 @@ fun AddEditCustomerScreen(
     var isSaving by remember { mutableStateOf(false) }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
@@ -42,13 +51,10 @@ fun AddEditCustomerScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back"
-                        )
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 )
             )
@@ -58,97 +64,91 @@ fun AddEditCustomerScreen(
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = ScreenEdgePadding, vertical = ScreenEdgePadding)
         ) {
-            // input customer name
-            OutlinedTextField(
-                value = name,
-                onValueChange = {
-                    name = it
-                    if (it.isNotBlank()) showError = false
-                },
-                label = { Text("Customer Name *") },
-                placeholder = { Text("Enter full name") },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Person,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
+            Card(
+                shape = RoundedCornerShape(CardCornerRadius),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, CardBorderColor),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(18.dp)
+                ) {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = {
+                            name = it
+                            if (it.isNotBlank()) showError = false
+                        },
+                        label = { Text("Customer Name *") },
+                        placeholder = { Text("Enter full name") },
+                        leadingIcon = {
+                            Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        },
+                        trailingIcon = {
+                            if (name.isNotEmpty()) {
+                                IconButton(onClick = { name = "" }) {
+                                    Icon(Icons.Default.Clear, contentDescription = "Clear name")
+                                }
+                            }
+                        },
+                        isError = showError,
+                        supportingText = {
+                            if (showError) {
+                                Text("Name is required", color = MaterialTheme.colorScheme.error)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(CardCornerRadius),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = CardBorderColor)
                     )
-                },
-                trailingIcon = {
-                    if (name.isNotEmpty()) {
-                        IconButton(onClick = { name = "" }) {
-                            Icon(Icons.Default.Clear, contentDescription = "Clear name")
-                        }
-                    }
-                },
-                isError = showError,
-                supportingText = {
-                    if (showError) {
-                        Text(
-                            text = "Name is required",
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                singleLine = true,
-                colors = OutlinedTextFieldDefaults.colors(
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                    focusedContainerColor = MaterialTheme.colorScheme.surface
-                )
-            )
 
-            // input tusab number
-            OutlinedTextField(
-                value = phone,
-                onValueChange = { phone = it },
-                label = { Text("Phone Number (Optional)") },
-                placeholder = { Text("Enter phone number") },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Phone,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
+                    OutlinedTextField(
+                        value = phone,
+                        onValueChange = { phone = it },
+                        label = { Text("Phone Number (Optional)") },
+                        placeholder = { Text("Enter phone number") },
+                        leadingIcon = {
+                            Icon(Icons.Default.Phone, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        },
+                        trailingIcon = {
+                            if (phone.isNotEmpty()) {
+                                IconButton(onClick = { phone = "" }) {
+                                    Icon(Icons.Default.Clear, contentDescription = "Clear phone")
+                                }
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(CardCornerRadius),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = CardBorderColor)
                     )
-                },
-                trailingIcon = {
-                    if (phone.isNotEmpty()) {
-                        IconButton(onClick = { phone = "" }) {
-                            Icon(Icons.Default.Clear, contentDescription = "Clear phone")
-                        }
-                    }
-                },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                singleLine = true,
-                colors = OutlinedTextFieldDefaults.colors(
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                    focusedContainerColor = MaterialTheme.colorScheme.surface
-                )
-            )
+                }
+            }
 
-            Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.height(24.dp))
 
-            //action but
             Button(
                 onClick = {
                     if (name.isBlank()) {
                         showError = true
                     } else if (!isSaving) {
                         isSaving = true
-                        onSave(name.trim(), phone.trim())
+                        // Title-case the name on save ("jess" -> "Jess") so
+                        // display code elsewhere doesn't have to guess casing.
+                        onSave(name.trim().toTitleCase(), phone.trim())
                     }
                 },
                 enabled = !isSaving,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(54.dp),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(CardCornerRadius)
             ) {
                 if (isSaving) {
                     CircularProgressIndicator(

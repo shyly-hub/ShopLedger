@@ -1,221 +1,276 @@
 package com.stepitacademy.shopledger.orders
 
-import android.app.DatePickerDialog
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.stepitacademy.shopledger.data.Currency
-import com.stepitacademy.shopledger.data.Order
+import com.stepitacademy.shopledger.ui.theme.components.SegmentedToggle
+import com.stepitacademy.shopledger.util.toTitleCase
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
+import java.util.Locale
 
+private val CardCornerRadius = 12.dp
+private val ScreenEdgePadding = 16.dp
+private val CardBorderColor = Color(0xFFE5E7EB)
+
+/**
+ * amountMinorUnits handed back to onSave is already converted to the
+ * smallest unit (whole riel for KHR, cents for USD) — the caller does
+ * not need to do any further conversion before writing to the DB.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddEditOrderScreen(
-    customerName: String = "",
-    orderToEdit: Order? = null,
-    onSave: (description: String, amount: Long, currency: Currency, timestamp: Long, isPaid: Boolean) -> Unit,
+    customerName: String,
+    initialDescription: String = "",
+    initialAmountMajorUnitsText: String = "", // e.g. "20000" for riel, "3.50" for dollars
+    initialCurrency: Currency = Currency.KHR,
+    initialTimestamp: Long = System.currentTimeMillis(),
+    initialIsPaid: Boolean = false,
+    isEditing: Boolean = false,
+    onSave: (description: String, amountMinorUnits: Long, currency: Currency, timestamp: Long, isPaid: Boolean) -> Unit,
     onBack: () -> Unit
 ) {
-    // FIX: rememberSaveable so in-progress input survives rotation,
-    // matching the checklist's "survive a rotation" requirement and the
-    // same pattern already used in AddEditCustomerScreen.
-    var description by rememberSaveable(orderToEdit) { mutableStateOf(orderToEdit?.description ?: "") }
+    var description by rememberSaveable { mutableStateOf(initialDescription) }
+    var amountText by rememberSaveable { mutableStateOf(initialAmountMajorUnitsText) }
+    var currency by rememberSaveable { mutableStateOf(initialCurrency) }
+    var timestamp by rememberSaveable { mutableStateOf(initialTimestamp) }
+    var isPaid by rememberSaveable { mutableStateOf(initialIsPaid) }
+    var showDatePicker by remember { mutableStateOf(false) }
+    var descriptionError by remember { mutableStateOf(false) }
+    var amountError by remember { mutableStateOf(false) }
+    var isSaving by remember { mutableStateOf(false) }
 
-    var amountText by rememberSaveable(orderToEdit) {
-        mutableStateOf(
-            if (orderToEdit != null) {
-                if (orderToEdit.currency == Currency.USD) (orderToEdit.amount / 100.0).toString()
-                else orderToEdit.amount.toString()
-            } else ""
-        )
+    val dateText = remember(timestamp) {
+        SimpleDateFormat("d MMM yyyy", Locale.getDefault()).format(Date(timestamp))
     }
 
-    var selectedCurrency by rememberSaveable(orderToEdit) { mutableStateOf(orderToEdit?.currency ?: Currency.KHR) }
-    var isPaid by rememberSaveable(orderToEdit) { mutableStateOf(orderToEdit?.isPaid ?: false) }
-    var selectedTimestamp by rememberSaveable(orderToEdit) { mutableStateOf(orderToEdit?.timestamp ?: System.currentTimeMillis()) }
-
-    // FIX: surface validation errors instead of silently doing nothing on Save.
-    var descriptionError by remember { mutableStateOf<String?>(null) }
-    var amountError by remember { mutableStateOf<String?>(null) }
-
-    val context = LocalContext.current
-    val dateFormatter = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()) }
-
-    // FIX: rebuild the dialog (and the calendar it's seeded from) whenever
-    // selectedTimestamp changes, so reopening the picker shows the last
-    // picked date instead of the date the screen first composed with.
-    val datePickerDialog = remember(selectedTimestamp) {
-        val calendar = Calendar.getInstance().apply { timeInMillis = selectedTimestamp }
+    if (showDatePicker) {
+        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = timestamp)
         DatePickerDialog(
-            context,
-            { _, year, month, dayOfMonth ->
-                val picked = Calendar.getInstance().apply {
-                    timeInMillis = selectedTimestamp
-                    set(year, month, dayOfMonth)
-                }
-                selectedTimestamp = picked.timeInMillis
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let { timestamp = it }
+                    showDatePicker = false
+                }) { Text("OK") }
             },
-            calendar.get(Calendar.YEAR),
-            calendar.get(Calendar.MONTH),
-            calendar.get(Calendar.DAY_OF_MONTH)
-        )
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TopAppBar(
+            CenterAlignedTopAppBar(
                 title = {
-                    val titleText = if (orderToEdit == null) {
-                        if (customerName.isNotBlank()) "Add Order for $customerName" else "Add Order"
-                    } else {
-                        "Edit Order"
-                    }
-                    Text(titleText)
+                    Text(
+                        text = if (isEditing) "Edit Transaction" else "Add Transaction",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                    )
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back"
-                        )
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
             )
         }
     ) { padding ->
         Column(
             modifier = Modifier
-                .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = ScreenEdgePadding, vertical = ScreenEdgePadding)
         ) {
-            OutlinedTextField(
-                value = description,
-                onValueChange = {
-                    description = it
-                    if (it.isNotBlank()) descriptionError = null
-                },
-                label = { Text("Description *") },
-                isError = descriptionError != null,
-                supportingText = {
-                    descriptionError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
+            Text(
+                text = "For $customerName",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.outline
             )
+            Spacer(modifier = Modifier.height(16.dp))
 
-            OutlinedTextField(
-                value = amountText,
-                onValueChange = {
-                    amountText = it
-                    amountError = null
-                },
-                label = { Text(if (selectedCurrency == Currency.USD) "Amount ($)" else "Amount (Riel)") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                isError = amountError != null,
-                supportingText = {
-                    amountError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-
-            OutlinedTextField(
-                value = dateFormatter.format(Date(selectedTimestamp)),
-                onValueChange = {},
-                readOnly = true,
-                label = { Text("Order Date") },
-                trailingIcon = {
-                    IconButton(onClick = { datePickerDialog.show() }) {
-                        Icon(Icons.Default.DateRange, contentDescription = "Select Date")
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { datePickerDialog.show() },
-                enabled = false
-            )
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    onClick = { selectedCurrency = Currency.KHR },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (selectedCurrency == Currency.KHR)
-                            MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary
-                    ),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("KHR")
-                }
-                Button(
-                    onClick = { selectedCurrency = Currency.USD },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (selectedCurrency == Currency.USD)
-                            MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary
-                    ),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("USD")
-                }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Card(
+                shape = RoundedCornerShape(CardCornerRadius),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, CardBorderColor),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
-                FilterChip(
-                    selected = !isPaid,
-                    onClick = { isPaid = false },
-                    label = { Text("Unpaid (Debt)") },
-                    modifier = Modifier.weight(1f)
-                )
-                FilterChip(
-                    selected = isPaid,
-                    onClick = { isPaid = true },
-                    label = { Text("Paid") },
-                    modifier = Modifier.weight(1f)
-                )
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(18.dp)
+                ) {
+                    OutlinedTextField(
+                        value = description,
+                        onValueChange = {
+                            description = it
+                            if (it.isNotBlank()) descriptionError = false
+                        },
+                        label = { Text("Item / Note") },
+                        placeholder = { Text("e.g. Rice, 5kg") },
+                        isError = descriptionError,
+                        supportingText = {
+                            if (descriptionError) Text("Item / note is required", color = MaterialTheme.colorScheme.error)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(CardCornerRadius),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = CardBorderColor)
+                    )
+
+                    Column {
+                        OutlinedTextField(
+                            value = amountText,
+                            onValueChange = {
+                                amountText = it.filter { ch -> ch.isDigit() || ch == '.' }
+                                amountError = false
+                            },
+                            label = { Text(if (currency == Currency.KHR) "Amount (KHR)" else "Amount (USD)") },
+                            placeholder = { Text(if (currency == Currency.KHR) "e.g. 20000" else "e.g. 3.50") },
+                            trailingIcon = {
+                                Text(
+                                    text = if (currency == Currency.KHR) "៛" else "$",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    modifier = Modifier.padding(end = 16.dp)
+                                )
+                            },
+                            isError = amountError,
+                            supportingText = {
+                                if (amountError) Text("Enter a valid amount", color = MaterialTheme.colorScheme.error)
+                            },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(CardCornerRadius),
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = CardBorderColor)
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        SegmentedToggle(
+                            leftLabel = "KHR (៛)",
+                            rightLabel = "USD ($)",
+                            isLeftSelected = currency == Currency.KHR,
+                            onSelectLeft = { currency = Currency.KHR },
+                            onSelectRight = { currency = Currency.USD },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    OutlinedTextField(
+                        value = dateText,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Transaction Date") },
+                        trailingIcon = {
+                            IconButton(onClick = { showDatePicker = true }) {
+                                Icon(Icons.Default.CalendarToday, contentDescription = "Pick date")
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(CardCornerRadius),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = CardBorderColor)
+                    )
+
+                    Column {
+                        Text(
+                            text = "Status",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        SegmentedToggle(
+                            leftLabel = "Pending",
+                            rightLabel = "Paid",
+                            isLeftSelected = !isPaid,
+                            onSelectLeft = { isPaid = false },
+                            onSelectRight = { isPaid = true },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
             }
 
-            Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.height(24.dp))
 
             Button(
                 onClick = {
-                    val parsedDouble = amountText.toDoubleOrNull()
+                    val trimmedDescription = description.trim()
+                    val minorUnits = parseAmountToMinorUnits(amountText, currency)
 
-                    descriptionError = if (description.isBlank()) "Description is required" else null
-                    amountError = when {
-                        parsedDouble == null -> "Enter a valid amount"
-                        parsedDouble <= 0.0 -> "Amount must be greater than zero"
-                        else -> null
+                    var hasError = false
+                    if (trimmedDescription.isBlank()) {
+                        descriptionError = true
+                        hasError = true
+                    }
+                    if (minorUnits == null || minorUnits <= 0) {
+                        amountError = true
+                        hasError = true
                     }
 
-                    if (descriptionError == null && amountError == null && parsedDouble != null) {
-                        val finalAmount = if (selectedCurrency == Currency.USD) {
-                            Math.round(parsedDouble * 100)
-                        } else {
-                            parsedDouble.toLong()
-                        }
-                        onSave(description.trim(), finalAmount, selectedCurrency,
-                            selectedTimestamp, isPaid)
+                    if (!hasError && !isSaving && minorUnits != null) {
+                        isSaving = true
+                        // Title-case on save ("sugar" -> "Sugar") so the
+                        // Transaction History list reads consistently.
+                        onSave(trimmedDescription.toTitleCase(), minorUnits, currency, timestamp, isPaid)
                     }
                 },
-                modifier = Modifier.fillMaxWidth()
+                enabled = !isSaving,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp),
+                shape = RoundedCornerShape(CardCornerRadius)
             ) {
-                Text(if (orderToEdit == null) "Save Order" else "Update Order")
+                if (isSaving) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        strokeWidth = 2.5.dp
+                    )
+                } else {
+                    Text(
+                        text = if (isEditing) "Update Transaction" else "Add Transaction",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                }
             }
         }
+    }
+}
+
+/**
+ * Converts a user-facing amount (major units — whole riel, or dollars
+ * with cents) into the Long minor-unit value the database stores.
+ * KHR has no smaller unit, so it passes through as-is; USD is
+ * multiplied by 100 and rounded to avoid floating-point drift.
+ */
+private fun parseAmountToMinorUnits(text: String, currency: Currency): Long? {
+    val value = text.toDoubleOrNull() ?: return null
+    if (value <= 0) return null
+    return when (currency) {
+        Currency.KHR -> value.toLong()
+        Currency.USD -> Math.round(value * 100)
     }
 }

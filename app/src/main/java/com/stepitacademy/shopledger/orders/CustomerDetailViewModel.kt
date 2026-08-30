@@ -12,19 +12,17 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class CustomerDetailViewModel(
-    private val customerId: Long,
-    private val repository: ShopRepository
+    private val repository: ShopRepository,
+    private val customerId: Long
 ) : ViewModel() {
 
-    // Customer debt details stream
-    val customerDebt: StateFlow<CustomerWithDebt?> = repository.customerDebt(customerId)
+    val customer: StateFlow<CustomerWithDebt?> = repository.customerDebt(customerId)
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = null
         )
 
-    // Orders list stream for this customer
     val orders: StateFlow<List<Order>> = repository.ordersForCustomer(customerId)
         .stateIn(
             scope = viewModelScope,
@@ -32,14 +30,13 @@ class CustomerDetailViewModel(
             initialValue = emptyList()
         )
 
-    // Mark an order as paid
     fun markOrderPaid(orderId: Long) {
         viewModelScope.launch {
             repository.markOrderPaid(orderId)
         }
     }
 
-    // Add a new order
+    /** Inserts a new order for this customer. amount is already in minor units. */
     fun addOrder(
         description: String,
         amount: Long,
@@ -61,7 +58,7 @@ class CustomerDetailViewModel(
         }
     }
 
-    // Update an existing order (Edit)
+    /** Updates an existing order. amount is already in minor units. */
     fun updateOrder(
         orderId: Long,
         description: String,
@@ -72,16 +69,17 @@ class CustomerDetailViewModel(
         onSuccess: () -> Unit
     ) {
         viewModelScope.launch {
-            val updatedOrder = Order(
-                id = orderId,
-                customerId = customerId,
-                description = description,
-                amount = amount,
-                currency = currency,
-                timestamp = timestamp,
-                isPaid = isPaid
+            repository.updateOrder(
+                Order(
+                    id = orderId,
+                    customerId = customerId,
+                    description = description,
+                    amount = amount,
+                    currency = currency,
+                    timestamp = timestamp,
+                    isPaid = isPaid
+                )
             )
-            repository.updateOrder(updatedOrder)
             onSuccess()
         }
     }
