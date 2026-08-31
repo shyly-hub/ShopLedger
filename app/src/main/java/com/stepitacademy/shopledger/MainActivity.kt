@@ -4,10 +4,15 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -18,7 +23,6 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.stepitacademy.shopledger.customers.AddEditCustomerScreen
 import com.stepitacademy.shopledger.customers.CustomersScreen
-import com.stepitacademy.shopledger.data.Currency
 import com.stepitacademy.shopledger.data.RoomShopRepository
 import com.stepitacademy.shopledger.data.ShopDatabase
 import com.stepitacademy.shopledger.data.ShopRepository
@@ -62,13 +66,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-/**
- * CustomerDetailViewModel's constructor is (repository, customerId) — in
- * that order. This factory is built fresh per navigation entry so the
- * ViewModel is registered with that entry's ViewModelStore and its
- * viewModelScope is actually cancelled (onCleared fires) when you
- * navigate away, instead of leaking its Flow collectors.
- */
 private fun customerDetailViewModelFactory(
     repository: ShopRepository,
     customerId: Long
@@ -82,10 +79,11 @@ private fun customerDetailViewModelFactory(
     }
 }
 
-/** Converts a stored minor-unit amount back into the text a user would type. */
-private fun minorUnitsToDisplayText(amount: Long, currency: Currency): String = when (currency) {
-    Currency.KHR -> amount.toString()
-    Currency.USD -> "%.2f".format(amount / 100.0)
+@Composable
+private fun FullScreenLoading() {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        CircularProgressIndicator()
+    }
 }
 
 @Composable
@@ -110,6 +108,9 @@ fun AppNavigation(
                     navController.navigate("add_customer")
                 },
                 onEditCustomerClick = { customer ->
+                    // customer.name / customer.phone come straight from the
+                    // already-loaded list — no async gap here, so these are
+                    // safe to encode directly into the route.
                     val encodedName = URLEncoder.encode(customer.name, "UTF-8")
                     val encodedPhone = URLEncoder.encode(customer.phone ?: "", "UTF-8")
                     navController.navigate(
@@ -119,7 +120,7 @@ fun AppNavigation(
             )
         }
 
-        // Add New Customer
+        // Add New Customer — blank fields are intentional here, and ONLY here.
         composable("add_customer") {
             AddEditCustomerScreen(
                 isEditing = false,
@@ -132,7 +133,7 @@ fun AppNavigation(
             )
         }
 
-        // Edit Existing Customer
+        // Edit Existing Customer — pre-filled from the route args set above.
         composable(
             route = "edit_customer?customerId={customerId}&initialName={initialName}&initialPhone={initialPhone}",
             arguments = listOf(
@@ -184,7 +185,7 @@ fun AppNavigation(
             )
         }
 
-        // Add Order
+        // Add Order — blank fields are intentional here, and ONLY here.
         composable(
             route = "add_order/{customerId}",
             arguments = listOf(navArgument("customerId") { type = NavType.LongType })
@@ -226,33 +227,44 @@ fun AppNavigation(
 
             val orderToEdit = remember(orders, orderId) { orders.find { it.id == orderId } }
 
-            // While `orders` hasn't loaded yet, orderToEdit is briefly null.
-            // Fall back to blank/default initial values rather than crashing;
-            // once the Flow emits, this recomposes with the real order data.
-            AddEditOrderScreen(
-                customerName = customer?.name ?: "",
-                initialDescription = orderToEdit?.description ?: "",
-                initialAmountMajorUnitsText = orderToEdit?.let {
-                    minorUnitsToDisplayText(it.amount, it.currency)
-                } ?: "",
-                initialCurrency = orderToEdit?.currency ?: Currency.KHR,
-                initialTimestamp = orderToEdit?.timestamp ?: System.currentTimeMillis(),
-                initialIsPaid = orderToEdit?.isPaid ?: false,
-                isEditing = true,
-                onSave = { description, amountMinorUnits, currency, timestamp, isPaid ->
-                    detailViewModel.updateOrder(
-                        orderId = orderId,
-                        description = description,
-                        amount = amountMinorUnits,
-                        currency = currency,
-                        timestamp = timestamp,
-                        isPaid = isPaid
-                    ) {
-                        navController.popBackStack()
-                    }
-                },
-                onBack = { navController.popBackStack() }
-            )
+            // THE FIX: don't render AddEditOrderScreen at all until the
+            // real order has loaded from the orders Flow. Previously this
+            // rendered immediately with orderToEdit == null (Flow hadn't
+            // emitted yet), so the form's rememberSaveable state captured
+            // blank values on that first composition and never picked up
+            // the real data once it arrived a moment later. Gating on
+            // orderToEdit != null means the form's very first composition
+            // already has the correct pre-fill data — no race, no blank
+            // flash, no stale state.
+            if (orderToEdit == null) {
+                FullScreenLoading()
+            } else {
+                AddEditOrderScreen(
+                    customerName = customer?.name ?: "",
+                    initialDescription = orderToEdit.description,
+                    initialAmountMajorUnitsText = when (orderToEdit.currency) {
+                        com.stepitacademy.shopledger.data.Currency.KHR -> orderToEdit.amount.toString()
+                        com.stepitacademy.shopledger.data.Currency.USD -> "%.2f".format(orderToEdit.amount / 100.0)
+                    },
+                    initialCurrency = orderToEdit.currency,
+                    initialTimestamp = orderToEdit.timestamp,
+                    initialIsPaid = orderToEdit.isPaid,
+                    isEditing = true,
+                    onSave = { description, amountMinorUnits, currency, timestamp, isPaid ->
+                        detailViewModel.updateOrder(
+                            orderId = orderId,
+                            description = description,
+                            amount = amountMinorUnits,
+                            currency = currency,
+                            timestamp = timestamp,
+                            isPaid = isPaid
+                        ) {
+                            navController.popBackStack()
+                        }
+                    },
+                    onBack = { navController.popBackStack() }
+                )
+            }
         }
     }
 }

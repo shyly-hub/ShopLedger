@@ -32,6 +32,10 @@ private val CardBorderColor = Color(0xFFE5E7EB)
  * amountMinorUnits handed back to onSave is already converted to the
  * smallest unit (whole riel for KHR, cents for USD) — the caller does
  * not need to do any further conversion before writing to the DB.
+ *
+ * All initial* parameters are the sole source of pre-fill data. This
+ * screen never resets them to blank on its own; a blank field only
+ * happens because the caller passed blank defaults (the Add New flow).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,11 +50,18 @@ fun AddEditOrderScreen(
     onSave: (description: String, amountMinorUnits: Long, currency: Currency, timestamp: Long, isPaid: Boolean) -> Unit,
     onBack: () -> Unit
 ) {
-    var description by rememberSaveable { mutableStateOf(initialDescription) }
-    var amountText by rememberSaveable { mutableStateOf(initialAmountMajorUnitsText) }
-    var currency by rememberSaveable { mutableStateOf(initialCurrency) }
-    var timestamp by rememberSaveable { mutableStateOf(initialTimestamp) }
-    var isPaid by rememberSaveable { mutableStateOf(initialIsPaid) }
+    // Keyed on every initial* value: if MainActivity recomposes this
+    // screen with newly-arrived order data (see the loading gate in
+    // AppNavigation's edit_order route), the form re-initializes from
+    // the real values instead of being stuck with whatever was
+    // captured on the very first, possibly-blank, composition.
+    val formKey = arrayOf(initialDescription, initialAmountMajorUnitsText, initialCurrency, initialTimestamp, initialIsPaid)
+
+    var description by rememberSaveable(*formKey) { mutableStateOf(initialDescription) }
+    var amountText by rememberSaveable(*formKey) { mutableStateOf(initialAmountMajorUnitsText) }
+    var currency by rememberSaveable(*formKey) { mutableStateOf(initialCurrency) }
+    var timestamp by rememberSaveable(*formKey) { mutableStateOf(initialTimestamp) }
+    var isPaid by rememberSaveable(*formKey) { mutableStateOf(initialIsPaid) }
     var showDatePicker by remember { mutableStateOf(false) }
     var descriptionError by remember { mutableStateOf(false) }
     var amountError by remember { mutableStateOf(false) }
@@ -232,8 +243,6 @@ fun AddEditOrderScreen(
 
                     if (!hasError && !isSaving && minorUnits != null) {
                         isSaving = true
-                        // Title-case on save ("sugar" -> "Sugar") so the
-                        // Transaction History list reads consistently.
                         onSave(trimmedDescription.toTitleCase(), minorUnits, currency, timestamp, isPaid)
                     }
                 },
@@ -260,12 +269,7 @@ fun AddEditOrderScreen(
     }
 }
 
-/**
- * Converts a user-facing amount (major units — whole riel, or dollars
- * with cents) into the Long minor-unit value the database stores.
- * KHR has no smaller unit, so it passes through as-is; USD is
- * multiplied by 100 and rounded to avoid floating-point drift.
- */
+
 private fun parseAmountToMinorUnits(text: String, currency: Currency): Long? {
     val value = text.toDoubleOrNull() ?: return null
     if (value <= 0) return null

@@ -25,6 +25,13 @@ private val CardCornerRadius = 12.dp
 private val ScreenEdgePadding = 16.dp
 private val CardBorderColor = Color(0xFFE5E7EB)
 
+/**
+ * initialName/initialPhone are the ONLY source of pre-fill data — they
+ * come straight from the customer being edited. This screen never
+ * defaults them to "" itself; that only happens because the caller
+ * passes "" when opening the Add New flow. Editing vs. adding is
+ * entirely the caller's responsibility (see MainActivity's routes).
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddEditCustomerScreen(
@@ -34,8 +41,13 @@ fun AddEditCustomerScreen(
     onSave: (name: String, phone: String) -> Unit,
     onBack: () -> Unit
 ) {
-    var name by rememberSaveable { mutableStateOf(initialName) }
-    var phone by rememberSaveable { mutableStateOf(initialPhone) }
+    // Keyed on the incoming initial values: if this composable is ever
+    // recomposed with different initialName/initialPhone (e.g. the
+    // customer data arrives slightly after first composition), the saved
+    // state re-initializes from the new values instead of sticking with
+    // whatever was captured on the very first pass.
+    var name by rememberSaveable(initialName, initialPhone) { mutableStateOf(initialName) }
+    var phone by rememberSaveable(initialName, initialPhone) { mutableStateOf(initialPhone) }
     var showError by remember { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
 
@@ -139,8 +151,6 @@ fun AddEditCustomerScreen(
                         showError = true
                     } else if (!isSaving) {
                         isSaving = true
-                        // Title-case the name on save ("jess" -> "Jess") so
-                        // display code elsewhere doesn't have to guess casing.
                         onSave(name.trim().toTitleCase(), phone.trim())
                     }
                 },
